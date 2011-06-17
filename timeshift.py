@@ -214,7 +214,7 @@ class Config(object):
         "output=", "crop",
         "split"
       ])
-    except getopt.GetoptError as e:
+    except getopt.GetoptError, e:
       print(e)
       self.usage()
 
