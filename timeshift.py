@@ -172,13 +172,14 @@ def save_subs(subs):
     os.rename(tmp_fn, config.fn)
     final_name = config.fn
   else:
-    new_fn = config.new_fn if config.new_fn else 'fixed.' + config.fn
+    new_fn = config.output if config.output else 'fixed.' + config.fn
     try:
       os.remove(new_fn)
     except OSError, e:
       pass
     subs.save(new_fn)
     final_name = new_fn
+
   logging.info("Subs written to %s" % final_name)
 
 CHECK_TYPES = ["nocheck", "check", "fix"]
@@ -195,6 +196,7 @@ class Config(object):
     self.crop = False
     self.output = None
     self.split = False
+    self.inplace_save = False
 
     self.rw = False
 
@@ -211,7 +213,7 @@ class Config(object):
         "from=", "to=",
         "gap=", "string-length=",
         "duration=",
-        "output=", "crop",
+        "output=", "inplace", "crop",
         "split"
       ])
     except getopt.GetoptError, e:
@@ -244,6 +246,8 @@ class Config(object):
           self.usage()
       elif opt == "--output":
         self.output = arg
+      elif opt == "--inplace":
+        self.inplace_save = True
       elif opt == "--crop":
         self.crop = True
       elif opt == "--split":
@@ -342,15 +346,26 @@ class Config(object):
       opt, arg, ", ".join(possible_args)))
 
   def usage(self):
-    print("timeshift [OPTIONS] filename")
-    print("          --split  show split locations")
-    print("          --from ?")
-    print("          --to ?")
-    print("          --gap nocheck|check|fix")
-    print("          --string-length nocheck|check")
-    print("          --duration nocheck|check|fix")
-    print("          --output filename")
-    print("          --crop  save only the from-to interval")
+    print("""
+timeshift [OPTIONS] filename
+          --split
+              show split locations
+          --from HH:MM:SS,DDD
+              Specify the begining of the interval to be examined.
+              Must match exactly the start time of a subtitle.
+          --to HH:MM:SS,DDD
+              Specify the end of the interval to be examined.
+              Must match exactly the end time of a subtitle.
+          --gap nocheck|check|fix
+          --string-length nocheck|check
+          --duration nocheck|check|fix
+          --inplace
+              Overwrite original file.
+          --output filename
+          --crop"
+              Save only the from-to interval.
+""")
+
     sys.exit(-1)
 
 config = Config()
@@ -389,6 +404,8 @@ else:
   # print(gap_res)
 
   if config.rw:
+    if config.crop:
+      subs = pysrt.SubRipFile(items = subs[config.beg:config.end])
     save_subs(subs)
 
   # print("Summary:")
