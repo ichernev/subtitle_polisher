@@ -126,7 +126,7 @@ def bsrch(subs, time):
   while l + 1 < r:
     m = (l + r) / 2
     # print("subs[%d].end.ordinal == %d < %d" % (m, subs[m].end.ordinal,time))
-    if time <= subs[m].end.ordinal:
+    if time < subs[m].end.ordinal:
       r = m
     else:
       l = m
@@ -310,7 +310,7 @@ class Config(object):
       self.end = len(subs)
     else:
       ms = pysrt.SubRipTime.from_string(self.to).ordinal
-      sub_idx = bsrch(subs, ms)
+      sub_idx = bsrch(subs, ms) - 1
 
       if sub_idx == 0:
         print("bad end time -- no subs before it")
