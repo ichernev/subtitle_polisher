@@ -32,7 +32,10 @@ class Summary(object):
 
 summary = Summary()
 
-def ensure_gap(subs):
+def ensure_gap(subs, config):
+  if config.gap != "fix":
+    return
+
   for i in xrange(1, len(subs)):
     cgap = subs[i].start.ordinal - subs[i-1].end.ordinal
     if cgap < MIN_GAP:
@@ -41,7 +44,10 @@ def ensure_gap(subs):
           (subs[i-1].index, subs[i].index, cgap))
       summary.gaps_created += 1
 
-def check_short(subs):
+def check_short(subs, config):
+  if config.duration != "fix":
+    return
+
   for i, sub in enumerate(subs):
     clen = sub.end.ordinal - sub.start.ordinal
     if clen < MIN_LEN:
@@ -67,7 +73,7 @@ def check_short(subs):
 def check_string_length(subs, config):
   res = []
 
-  if config.string_length == "nocheck":
+  if config.string_length != "check":
     return res
 
   for i in range(config.beg, config.end):
@@ -80,7 +86,7 @@ def check_string_length(subs, config):
 def check_duration(subs, config):
   res = []
   
-  if config.duration == "nocheck":
+  if config.duration != "check":
     return res
 
   for i in range(config.beg, config.end):
@@ -97,7 +103,7 @@ def check_duration(subs, config):
 def check_gap(subs, config):
   res = []
 
-  if config.gap == "nocheck":
+  if config.gap != "check":
     return res
 
   for i in range(config.beg + 1, config.end):
@@ -109,13 +115,13 @@ def check_gap(subs, config):
 
   return res
 
-def check_long(subs, config):
-  for i, sub in enumerate(subs):
-    tlen = len(sub.text)
-    if tlen > MAX_CHARS:
-      logging.warning("Subtitle id %d is too long (len %d chars). Break it down!" % \
-          (sub.index, tlen))
-      summary.too_long += 1
+# def check_long(subs, config):
+#   for i, sub in enumerate(subs):
+#     tlen = len(sub.text)
+#     if tlen > MAX_CHARS:
+#       logging.warning("Subtitle id %d is too long (len %d chars). Break it down!" % \
+#           (sub.index, tlen))
+#       summary.too_long += 1
 
 def bsrch(subs, time):
   if subs[-1].end.ordinal < time:
@@ -403,18 +409,16 @@ else:
     print(m)
   # print(gap_res)
 
-  if config.rw:
-    if config.crop:
-      subs = pysrt.SubRipFile(items = subs[config.beg:config.end])
-    save_subs(subs)
 
   # print("Summary:")
   # for k in dir(summary):
   #   if k.startswith('__'):
   #     continue
   #   print("%s: %s" % (k, summary.__getattribute__(k)))
-# ensure_gap(subs)
-# check_short(subs)
-# check_long(subs)
+  ensure_gap(subs, config)
+  check_short(subs, config)
 
-
+  if config.rw:
+    if config.crop:
+      subs = pysrt.SubRipFile(items = subs[config.beg:config.end])
+    save_subs(subs)
