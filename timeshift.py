@@ -11,99 +11,106 @@ logging.basicConfig(level = logging.INFO)
 def load_subs(filename):
   return pysrt.SubRipFile.open(filename)
 
-MIN_GAP = 150
-MIN_LEN = 1500
-MAX_CHARS = 70
+TEXT_LONG = 1
+TIMING_ISSUE = 2
 
-class Summary(object):
-  def __init__(self):
-    self.gaps_created = 0
-    self.prolonged = 0
-    self.too_short = 0
-    self.too_long = 0
+INFO = 1
+WARNING = 2
+ERROR = 3
+FIX = 1
+NOFIX = 2
 
-summary = Summary()
+class SrtItemIssue(object):
+  issue2str = {
+      TEXT_LONG: lambda data: "is too long (%d chars)" % data['length'],
+      TIMING_ISSUE:
+          lambda data: "has bad duration (or gap) (%d ms, %d chars/s)" % \
+          (data['duration'], data['charsPerSec'])
+  }
 
-def ensure_gap(subs, config):
-  if config.gap != "fix":
-    return
+  def fixEnd(self):
+    self.srtitem.end = pysrt.SubRipTime(milliseconds = self.data['newEnd'])
 
-  for i in xrange(1, len(subs)):
-    cgap = subs[i].start.ordinal - subs[i-1].end.ordinal
-    if cgap < MIN_GAP:
-      subs[i-1].end -= MIN_GAP - cgap
-      logging.info("Creating gap between sub ids: %d %d (was %d)" % \
-          (subs[i-1].index, subs[i].index, cgap))
-      summary.gaps_created += 1
+  issue2fix = {
+      TIMING_ISSUE: fixEnd,
+  }
 
-def check_short(subs, config):
-  if config.duration != "fix":
-    return
+  level2str = {
+      INFO: 'INFO',
+      WARNING: 'WARNING',
+      ERROR: 'ERROR',
+  }
 
-  for i, sub in enumerate(subs):
-    clen = sub.end.ordinal - sub.start.ordinal
-    if clen < MIN_LEN:
-      can_prolong = True
-      if i + 1 < len(subs):
-        # check to see if prolonging won't interfere with minimal gap.
-        nsub = subs[i + 1]
-        cgap = nsub.start.ordinal - sub.end.ordinal
+  fix2str = {
+      FIX: 'FIX',
+      NOFIX: 'NOFIX',
+  }
 
-        if cgap - MIN_GAP < MIN_LEN - clen:
-          can_prolong = False
+  def __init__(self, srtitem, issueId, level, fix, **kwargs):
+    self.srtitem = srtitem
+    self.issueId = issueId
+    self.level = level
+    self.fix = fix
 
-      if can_prolong:
-        sub.end += MIN_LEN - clen
-        logging.info("Prolonged subtitle id %d to min len (was %d)" % \
-            (sub.index, clen))
-        summary.prolonged += 1
-      else:
-        logging.warning("Subtitle id %d is too short (len %d ms), and cannot be prolonged" % \
-            (sub.index, clen))
-        summary.too_short += 1
+    self.data = kwargs
 
-def check_string_length(subs, config):
+  def __str__(self):
+    return "[%s]<%s> Subtitle from %s to %s %s" % (self.level2str[self.level], \
+        self.fix2str[self.fix],  self.srtitem.start, self.srtitem.end, \
+        self.issue2str[self.issueId](self.data))
+
+  def tryfix(self):
+    if self.fix == FIX:
+      try:
+        self.issue2fix[self.issueId](self)
+      except Exception as e:
+        print(e)
+        print(self.data)
+
+def check_text_length(subs, config):
   res = []
-
-  if config.string_length != "check":
-    return res
 
   for i in range(config.beg, config.end):
     slen = len(subs[i].text)
-    if slen > config.max_string_length:
-      res.append({'idx': i, 'length': slen, 'msg': 'string too long'})
+    if slen > config.max_string_length[1]:
+      res.append(SrtItemIssue(subs[i], TEXT_LONG, ERROR, NOFIX, length = slen))
+    elif slen > config.max_string_length[0]:
+      res.append(SrtItemIssue(subs[i], TEXT_LONG, WARNING, NOFIX, length = slen))
 
   return res
 
-def check_duration(subs, config):
+def analyze_timing(subs, config):
   res = []
   
-  if config.duration != "check":
-    return res
-
   for i in range(config.beg, config.end):
-    dur = subs[i].end.ordinal - subs[i].start.ordinal
-    chars_per_sec = len(subs[i].text) / (dur / 1000.0)
-    if dur < config.min_duration:
-      res.append({'idx': i, 'duration': dur, 'msg': 'short duration'})
-    elif chars_per_sec > config.max_chars_per_sec:
-      res.append({'idx': i, 'chars_per_sec': round(chars_per_sec), \
-          'msg': 'too many characters per second'})
+    start = subs[i].start.ordinal
+    end = subs[i].end.ordinal
+    duration = end - start
+    charsPerSec = len(subs[i].text) / (duration / 1000.0)
+    maxEnd = subs[i + 1].start.ordinal if i + 1 < len(subs) \
+        else end + 5 * 60 * 1000
+    maxEnd = maxEnd - config.min_gap
+    targetEnd = start + \
+        max(config.min_duration, config.max_chars_per_sec * len(subs[i].text))
 
-  return res
-
-def check_gap(subs, config):
-  res = []
-
-  if config.gap != "check":
-    return res
-
-  for i in range(config.beg + 1, config.end):
-    gap = get_gap(subs, i)
-    if gap < config.min_gap[0]:
-      res.append({'idx': i, 'gap': gap, 'msg': 'gap too small'})
-    elif gap < config.min_gap[1]:
-      res.append({'idx': i, 'gap': gap, 'msg': 'small gap'})
+    data = { 'duration': duration, 'charsPerSec': charsPerSec }
+    if maxEnd < start:
+      level = ERROR
+      fix = NOFIX
+    elif targetEnd < maxEnd:
+      level = INFO
+      fix = FIX
+      if end < targetEnd:
+        data['newEnd'] = targetEnd
+      elif end > maxEnd:
+        data['newEnd'] = maxEnd
+      else:
+        level = None
+    else:
+      level = WARNING
+      fix = FIX
+      data['newEnd'] = maxEnd
+    if level is not None: res.append(SrtItemIssue(subs[i], TIMING_ISSUE, level, fix, **data)) 
 
   return res
 
@@ -115,12 +122,10 @@ def bsrch(subs, time):
   r = len(subs)
   while l + 1 < r:
     m = (l + r) / 2
-    # print("subs[%d].end.ordinal == %d < %d" % (m, subs[m].end.ordinal,time))
     if time < subs[m].end.ordinal:
       r = m
     else:
       l = m
-  # print("bsrch %d --> %d" % (time, l))
   return r
 
 def get_gap(subs, idx):
@@ -149,7 +154,7 @@ def print_splits(subs, splits, config):
         (i, str(subs[splits[i-1]].start), str(subs[splits[i]-1].end)))
 
 def fixedFilename(fn):
-  return os.path.join(os.path.dirname(fn), "fixed." + os.path.basename(fn))
+  return os.path.join(os.path.dirname(fn), 'fixed.' + os.path.basename(fn))
 
 def save_subs(subs):
   final_name = None
@@ -175,17 +180,14 @@ def save_subs(subs):
 
   logging.info("Subs written to %s" % final_name)
 
-CHECK_TYPES = ["nocheck", "check", "fix"]
-
 class Config(object):
 
   def __init__(self):
     self.fn = None
     self.fr = None
     self.to = None
-    self.gap = "nocheck"
-    self.string_length = "nocheck"
-    self.duration = "nocheck"
+    self.text_length = None
+    self.timing = None
     self.crop = False
     self.output = None
     self.split = False
@@ -193,21 +195,21 @@ class Config(object):
 
     self.rw = False
 
-    self.min_gap = [100, 140]
+    self.min_gap = 150
     self.min_duration = 1500
     self.max_chars_per_sec = 28 # 1.5 sec for 42 chars
-    self.max_string_length = 70
+    self.max_string_length = [70, 80]
     self.split_interval = 5 * 60 * 1000 # 5 min
     self.split_gap_treshold = 750
 
   def from_args(self, argv):
     try:
-      opts, args = getopt.getopt(argv, "", [
-        "from=", "to=",
-        "gap=", "string-length=",
-        "duration=",
-        "output=", "inplace", "crop",
-        "split"
+      opts, args = getopt.getopt(argv, '', [
+        'from=', 'to=',
+        # 'gap=', 'string-length=', 'duration=',
+        'check-text-length', 'check-timing', 'fix-timing',
+        'output=', 'inplace', 'crop',
+        'split',
       ])
     except getopt.GetoptError, e:
       print(e)
@@ -215,41 +217,29 @@ class Config(object):
 
     # print("got args", opts, args)
     for opt, arg in opts:
-      if opt == "--from":
+      if opt == '--from':
         self.fr = arg
-      elif opt == "--to":
+      elif opt == '--to':
         self.to = arg
-      elif opt == "--gap":
-        if arg in CHECK_TYPES:
-          self.gap = arg
-        else:
-          self.bad_arg(opt, arg, CHECK_TYPES)
-          self.usage()
-      elif opt == "--string-length":
-        if arg in CHECK_TYPES:
-          self.string_length = arg
-        else:
-          self.bad_arg(opt, arg, CHECK_TYPES)
-          self.usage()
-      elif opt == "--duration":
-        if arg in CHECK_TYPES:
-          self.duration = arg
-        else:
-          self.bad_arg(opt, arg, CHECK_TYPES)
-          self.usage()
-      elif opt == "--output":
+      elif opt == '--check-timing':
+        self.timing = 'check'
+      elif opt == '--fix-timing':
+        self.timing = 'fix'
+      elif opt == '--check-text-length':
+        self.text_length = 'check'
+      elif opt == '--output':
         self.output = arg
-      elif opt == "--inplace":
+      elif opt == '--inplace':
         self.inplace_save = True
-      elif opt == "--crop":
+      elif opt == '--crop':
         self.crop = True
-      elif opt == "--split":
+      elif opt == '--split':
         self.split = True
 
     if len(args) == 1:
       self.fn = args[0]
     elif len(args) == 0:
-      print("subtitle filename not given")
+      print("subtitle filename not given\n")
       self.usage()
     else:
       print("too many arguments (expected one filename)")
@@ -290,19 +280,15 @@ class Config(object):
 
       self.end = sub_idx + 1 # one after the last
 
-    print("sub idx %d %d" % (self.beg, self.end))
-
   def consistency_check(self):
     # TODO: Check from/to args
     if self.split:
-      if self.gap != "nocheck" or self.duration != "nocheck" or \
-          self.string_length != "nocheck" or self.crop or self.fr or self.to:
-        print("%d %d %d %d %d %d" % (self.gap != "nocheck", self.duration != "nocheck", \
-            self.string_length != "nockeck", bool(self.crop), bool(self.fr), bool(self.to)))
-        print("if split is given it should be the only option")
+      if self.text_length is not None or self.timing is not None or \
+          self.crop or self.fr or self.to:
+        print("If split is given it should be the only option.")
         self.usage();
 
-    if self.gap == "fix" or self.duration == "fix" or self.crop:
+    if self.timing == 'fix' or self.crop:
       self.rw = True
     else:
       self.rw = False
@@ -312,8 +298,7 @@ class Config(object):
       opt, arg, ", ".join(possible_args)))
 
   def usage(self):
-    print("""
-timeshift [OPTIONS] filename
+    print("""timeshift [OPTIONS] filename
           --split
               show split locations
           --from HH:MM:SS,DDD
@@ -322,15 +307,14 @@ timeshift [OPTIONS] filename
           --to HH:MM:SS,DDD
               Specify the end of the interval to be examined.
               Must match exactly the end time of a subtitle.
-          --gap nocheck|check|fix
-          --string-length nocheck|check
-          --duration nocheck|check|fix
+          --check-text-length
+          --check-timing
+          --fix-timing
           --inplace
               Overwrite original file.
           --output filename
           --crop
-              Save only the from-to interval.
-""")
+              Save only the from-to interval.""")
 
     sys.exit(-1)
 
@@ -353,24 +337,19 @@ if config.split:
   print_splits(subs, splits, config)
 else:
   config.compute_beg_end(subs)
-  slen_res = check_string_length(subs, config)
-  print("string length:");
-  for m in slen_res:
-    print(m)
-  # print(slen_res)
-  dur_res = check_duration(subs, config)
-  print("duration:")
-  for m in dur_res:
-    print(m)
-  # print(dur_res)
-  gap_res = check_gap(subs, config)
-  print("gaps:")
-  for m in gap_res:
-    print(m)
-  # print(gap_res)
-
-  ensure_gap(subs, config)
-  check_short(subs, config)
+  if config.text_length == 'check':
+    for issue in check_text_length(subs, config):
+      print(issue)
+  if config.timing is not None:
+    timing_issues = analyze_timing(subs, config)
+    if config.timing == 'fix':
+      for issue in timing_issues:
+        issue.tryfix()
+        if issue.level >= WARNING:
+          print(issue)
+    else:
+      for issue in timing_issues:
+        print(issue)
 
   if config.rw:
     if config.crop:
