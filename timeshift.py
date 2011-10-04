@@ -164,6 +164,9 @@ def print_splits(subs, splits, config):
     print("interval %d: from %s to %s" % \
         (i, str(subs[splits[i-1]].start), str(subs[splits[i]-1].end)))
 
+def fixedFilename(fn):
+  return os.path.join(os.path.dirname(fn), "fixed." + os.path.basename(fn))
+
 def save_subs(subs):
   final_name = None
   if config.inplace_save:
@@ -178,7 +181,7 @@ def save_subs(subs):
     os.rename(tmp_fn, config.fn)
     final_name = config.fn
   else:
-    new_fn = config.output if config.output else 'fixed.' + config.fn
+    new_fn = config.output if config.output else fixedFilename(config.fn)
     try:
       os.remove(new_fn)
     except OSError, e:
