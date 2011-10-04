@@ -10,14 +10,6 @@ logging.basicConfig(level = logging.INFO)
 
 def load_subs(filename):
   return pysrt.SubRipFile.open(filename)
-  # fd = open(filename, 'rU')
-  # # try to ignore utf-8 BOM
-  # if fd.read(3) != '\xef\xbb\xbf':
-  #   fd.seek(0)
-  # else:
-  #   logging.info("Skipping BOM for utf-8. Phew!")
-
-  # return pysrt.SubRipFile.open(file_descriptor = fd)
 
 MIN_GAP = 150
 MIN_LEN = 1500
@@ -114,14 +106,6 @@ def check_gap(subs, config):
       res.append({'idx': i, 'gap': gap, 'msg': 'small gap'})
 
   return res
-
-# def check_long(subs, config):
-#   for i, sub in enumerate(subs):
-#     tlen = len(sub.text)
-#     if tlen > MAX_CHARS:
-#       logging.warning("Subtitle id %d is too long (len %d chars). Break it down!" % \
-#           (sub.index, tlen))
-#       summary.too_long += 1
 
 def bsrch(subs, time):
   if subs[-1].end.ordinal < time:
@@ -273,33 +257,6 @@ class Config(object):
 
     self.consistency_check()
 
-    # ops = True
-    # for arg in args:
-    #   if arg.startswith('-') and ops:
-    #     if arg == '--':
-    #       ops = False
-    #       continue
-    #     for opt in arg[1:]:
-    #       print("got opt", opt)
-    #       if opt == 'g':
-    #         self.gap_check = True
-    #       elif opt == 's':
-    #         self.short_check = True
-    #       elif opt == 'l':
-    #         self.long_check = True
-    #       elif opt == 'i':
-    #         self.inplace_save = True
-    #       else:
-    #         logging.warning("Unrecognized option %s" % opt)
-    #   elif self.fn == None:
-    #     self.fn = arg
-    #   elif self.new_fn == None:
-    #     self.new_fn = arg
-    #   else:
-    #     logging.warning("Too many arguments")
-
-    # if self.fn == None:
-    #   self.usage()
   def compute_beg_end(self, subs):
     if self.fr == None:
       self.beg = 0
@@ -371,7 +328,7 @@ timeshift [OPTIONS] filename
           --inplace
               Overwrite original file.
           --output filename
-          --crop"
+          --crop
               Save only the from-to interval.
 """)
 
@@ -412,12 +369,6 @@ else:
     print(m)
   # print(gap_res)
 
-
-  # print("Summary:")
-  # for k in dir(summary):
-  #   if k.startswith('__'):
-  #     continue
-  #   print("%s: %s" % (k, summary.__getattribute__(k)))
   ensure_gap(subs, config)
   check_short(subs, config)
 
