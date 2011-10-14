@@ -205,6 +205,7 @@ class Config(object):
   def from_args(self, argv):
     try:
       opts, args = getopt.getopt(argv, '', [
+        'help',
         'from=', 'to=',
         # 'gap=', 'string-length=', 'duration=',
         'check-text-length', 'check-timing', 'fix-timing',
@@ -217,7 +218,9 @@ class Config(object):
 
     # print("got args", opts, args)
     for opt, arg in opts:
-      if opt == '--from':
+      if opt == '--help':
+        self.usage(0)
+      elif opt == '--from':
         self.fr = arg
       elif opt == '--to':
         self.to = arg
@@ -297,10 +300,18 @@ class Config(object):
     print("%s does not accept argument %s. Possible values are %s" % (
       opt, arg, ", ".join(possible_args)))
 
-  def usage(self):
-    print("""timeshift [OPTIONS] filename
+  def usage(self, exit_code = -1):
+    print("""timeshift.py [OPTIONS] filename
+          Analyze, fix or crop a subtitle file.
+
+          --help
+              Show this help message.
           --split
-              show split locations
+              Propose split locations.
+              Sometimes a large file should be edited by several people.
+              A good split of the file is when each chunk has approximately
+              the same length and there is a reasonable time gap between the
+              chunks.
           --from HH:MM:SS,DDD
               Specify the begining of the interval to be examined.
               Must match exactly the start time of a subtitle.
@@ -308,15 +319,22 @@ class Config(object):
               Specify the end of the interval to be examined.
               Must match exactly the end time of a subtitle.
           --check-text-length
+              List subtitles that have too many charactes.
           --check-timing
+              List subtitles that have a high character per second ratio or
+              have short duration.
           --fix-timing
+              Prolongs subtitles that are considered to have a short duration
+              in --check-timing.
           --inplace
               Overwrite original file.
           --output filename
+              Specify an output file name.
+              The default is the input file name prefixed by 'fixed.'
           --crop
               Save only the from-to interval.""")
 
-    sys.exit(-1)
+    sys.exit(exit_code)
 
 config = Config()
 # print("%s" % (sys.argv[1:]))

@@ -1,3 +1,35 @@
-Tool for manipulating srt files.
+help message
+============
 
-Currently it can't do much :)
+timeshift.py [OPTIONS] filename
+          Analyze, fix or crop a subtitle file.
+
+          --help
+              Show this help message.
+          --split
+              Propose split locations.
+              Sometimes a large file should be edited by several people.
+              A good split of the file is when each chunk has approximately
+              the same length and there is a reasonable time gap between the
+              chunks.
+          --from HH:MM:SS,DDD
+              Specify the begining of the interval to be examined.
+              Must match exactly the start time of a subtitle.
+          --to HH:MM:SS,DDD
+              Specify the end of the interval to be examined.
+              Must match exactly the end time of a subtitle.
+          --check-text-length
+              List subtitles that have too many charactes.
+          --check-timing
+              List subtitles that have a high character per second ratio or
+              have short duration.
+          --fix-timing
+              Prolongs subtitles that are considered to have a short duration
+              in --check-timing.
+          --inplace
+              Overwrite original file.
+          --output filename
+              Specify an output file name.
+              The default is the input file name prefixed by 'fixed.'
+          --crop
+              Save only the from-to interval.
